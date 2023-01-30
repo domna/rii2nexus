@@ -58,3 +58,4 @@ MANIFEST
 .python-version
 
 .mypy_cache
+dispersions/*
