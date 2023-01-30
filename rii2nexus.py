@@ -1,16 +1,68 @@
 """Convert the refractiveindex.info database to nexus"""
+from collections import namedtuple
 import os
 from pathlib import Path
 import logging
 from typing import List
 import pandas as pd
+import yaml
 
-from elli.database import RII
 from nexusutils.dataconverter.convert import convert
 
-logging.basicConfig(level=logging.WARNING)
-database = RII()
-database.rii_path = Path("refractiveindexinfo-database/database")
+Entry = namedtuple(
+    "Entry",
+    [
+        "shelf",
+        "shelf_longname",
+        "book_divider",
+        "book",
+        "book_longname",
+        "page",
+        "page_type",
+        "page_longname",
+        "path",
+    ],
+)
+
+
+def load_rii_database():
+    """Loads the rii database"""
+    rii_path = Path("refractiveindex.info-database/database")
+
+    yml_file = yaml.load(
+        rii_path.joinpath("library.yml").read_text(encoding="utf-8"), yaml.SafeLoader
+    )
+
+    entries = []
+    for sh in yml_file:
+        b_div = pd.NA
+        for b in sh["content"]:
+            if "DIVIDER" not in b:
+                p_div = pd.NA
+                for p in b["content"]:
+                    if "DIVIDER" not in p:
+                        entries.append(
+                            Entry(
+                                sh["SHELF"],
+                                sh["name"],
+                                b_div,
+                                b["BOOK"],
+                                b["name"],
+                                p["PAGE"],
+                                p_div,
+                                p["name"],
+                                os.path.join("data", os.path.normpath(p["data"])),
+                            )
+                        )
+                    else:
+                        p_div = p["DIVIDER"]
+            else:
+                b_div = b["DIVIDER"]
+
+    return pd.DataFrame(entries, dtype=pd.StringDtype())
+
+
+catalog = load_rii_database()
 
 
 def yml_path2nexus_path(path: str) -> str:
@@ -54,7 +106,7 @@ def create_nexus(entry):
 
     def get_secondary_entry(base: str, secondary: str) -> pd.DataFrame:
         path = entry["path"].replace(f"-{base}.", f"-{secondary}.")
-        sec_entry = database.catalog[database.catalog["path"] == path]
+        sec_entry = catalog[catalog["path"] == path]
         assert len(sec_entry) == 1
         return path
 
@@ -85,7 +137,7 @@ def create_nexus(entry):
             write_nexus(entry["path"], metadata)
 
             return True
-        return True
+        return False
 
     def fill_entry():
         metadata = {}
@@ -104,5 +156,4 @@ def create_nexus(entry):
     fill_entry()
 
 
-print(database.catalog.columns.values)
-database.catalog.apply(create_nexus, axis=1)
+catalog.apply(create_nexus, axis=1)
