@@ -56,3 +56,5 @@ MANIFEST
 
 # Ignore pyenv virtualenv python version
 .python-version
+
+.mypy_cache
