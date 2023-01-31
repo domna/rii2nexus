@@ -79,7 +79,7 @@ def prefix_path(path: str) -> str:
 
 def fill(metadata: dict, entry: pd.DataFrame):
     """Fill the data dict from the entry"""
-    metadata["/ENTRY[entry]/chemical_formula"] = entry["book"]
+    metadata["/ENTRY[entry]/sample/chemical_formula"] = entry["book"]
     metadata["/ENTRY[entry]/dispersion_type"] = "measured"
 
 
