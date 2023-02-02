@@ -156,4 +156,25 @@ def create_nexus(entry):
     fill_entry()
 
 
-catalog.apply(create_nexus, axis=1)
+def create_nexus_database():
+    """Creates the nexus database from the rii database"""
+    catalog.apply(create_nexus, axis=1)
+
+
+def extract_metadata(samples=5):
+    """Extract metadata from a sample"""
+
+    def fill_n_print(entry):
+        print(entry)
+        metadata = {}
+        metadata["/ENTRY[entry]/literature"] = entry["page_longname"].split(":", 1)[0]
+        fill(metadata, entry)
+        print(metadata)
+
+    catalog[catalog["shelf"] == "main"].sample(samples).apply(fill_n_print, axis=1)
+
+
+if __name__ == "__main__":
+    # create_nexus_database()
+
+    extract_metadata()
