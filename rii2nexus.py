@@ -6,6 +6,7 @@ import logging
 from typing import List
 import pandas as pd
 import yaml
+from ase.data import chemical_symbols
 
 from nexusutils.dataconverter.convert import convert
 
@@ -80,17 +81,25 @@ def prefix_path(path: str) -> str:
 def fill(metadata: dict, entry: pd.DataFrame):
     """Fill the data dict from the entry"""
     metadata["/ENTRY[entry]/sample/chemical_formula"] = entry["book"]
+
+    elements = []
+    for symbol in chemical_symbols:
+        if symbol in entry["book"]:
+            elements.append(symbol)
+    if elements:
+        metadata["/ENTRY[entry]/sample/atom_types"] = ",".join(elements)
     metadata["/ENTRY[entry]/dispersion_type"] = "measured"
 
 
 def write_nexus(path: str, metadata: dict):
     """Write a nexus file from the dispersion data"""
+    filename = path.split("/", 1)[1].replace("/", "-")
     convert(
         input_file=[prefix_path(path)],
         objects=[metadata],
         reader="rii_database",
         nxdl="NXdispersive_material",
-        output=yml_path2nexus_path(path),
+        output=yml_path2nexus_path(f"dispersions-flat/{filename}"),
     )
 
 
@@ -175,6 +184,6 @@ def extract_metadata(samples=5):
 
 
 if __name__ == "__main__":
-    # create_nexus_database()
+    create_nexus_database()
 
-    extract_metadata()
+    # extract_metadata()
