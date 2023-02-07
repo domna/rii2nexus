@@ -8,7 +8,7 @@ import pandas as pd
 import yaml
 from ase.data import chemical_symbols
 
-from nexusutils.dataconverter import convert
+from nexusutils.dataconverter.convert import convert
 
 Entry = namedtuple(
     "Entry",
