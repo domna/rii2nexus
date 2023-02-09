@@ -6,17 +6,16 @@ eval "$(pyenv init -)"
 
 pyenv shell nxs-parser
 
-cd /Users/domna/fairmat/data-modeling/Base_Classes/new
+cd /Users/domna/fairmat/nomad-parser-nexus/nexusutils/definitions/contributed_definitions/nyaml
 for file in NXdispersion*yml
 do
 nyaml2nxdl --input-file $file
 done
 
-cd /Users/domna/fairmat/data-modeling/Application_Definitions/new
 nyaml2nxdl --input-file NXdispersive_material.yml
 
-cp /Users/domna/fairmat/data-modeling/Base_Classes/new/NXdispersion*.nxdl.xml \
+cp /Users/domna/fairmat/nomad-parser-nexus/nexusutils/definitions/contributed_definitions/nyaml/NXdispersion*.nxdl.xml \
 /Users/domna/fairmat/nomad-parser-nexus/nexusutils/definitions/contributed_definitions/
 
-cp /Users/domna/fairmat/data-modeling/Application_Definitions/new/NXdispersive_material.nxdl.xml \
+cp /Users/domna/fairmat/nomad-parser-nexus/nexusutils/definitions/contributed_definitions/nyaml/NXdispersive_material.nxdl.xml \
 /Users/domna/fairmat/nomad-parser-nexus/nexusutils/definitions/contributed_definitions/

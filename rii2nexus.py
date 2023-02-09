@@ -3,6 +3,7 @@ from collections import namedtuple
 import os
 from pathlib import Path
 import logging
+import re
 from typing import List
 import pandas as pd
 import yaml
@@ -80,12 +81,13 @@ def prefix_path(path: str) -> str:
 
 def fill(metadata: dict, entry: pd.DataFrame):
     """Fill the data dict from the entry"""
-    metadata["/ENTRY[entry]/sample/chemical_formula"] = entry["book"]
+    clean_chemical_formula = re.sub(r"[^A-Za-z0-9]", "", entry["book"])
+    metadata["/ENTRY[entry]/sample/chemical_formula"] = clean_chemical_formula
 
-    elements = []
-    for symbol in chemical_symbols:
-        if symbol in entry["book"]:
-            elements.append(symbol)
+    element_names = chemical_symbols.copy()  # Don't mess with the ase internal list
+    element_names.remove("X")
+    element_names += ["D", "T"]
+    elements = re.findall(rf"{'|'.join(element_names)}", clean_chemical_formula)
     if elements:
         metadata["/ENTRY[entry]/sample/atom_types"] = ",".join(elements)
     metadata["/ENTRY[entry]/dispersion_type"] = "measured"
@@ -93,13 +95,13 @@ def fill(metadata: dict, entry: pd.DataFrame):
 
 def write_nexus(path: str, metadata: dict):
     """Write a nexus file from the dispersion data"""
-    filename = path.split("/", 1)[1].replace("/", "-")
+    filename = path.split("/", 2)[-1].replace("/", "-")
     convert(
         input_file=[prefix_path(path)],
         objects=[metadata],
         reader="rii_database",
         nxdl="NXdispersive_material",
-        output=yml_path2nexus_path(f"dispersions-flat/{filename}"),
+        output=yml_path2nexus_path(f"{path.rsplit('/', 2)[0]}/{filename}"),
     )
 
 
