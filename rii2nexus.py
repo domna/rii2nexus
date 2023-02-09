@@ -83,30 +83,32 @@ def prefix_path(path: str) -> str:
 
 def parse_mat_desc(material_description: str):
     """Parse the material description into a formula and colloquial names"""
+    material_description = re.sub(r"\<[^\>]*\>", "", material_description)
     polymer = re.match(r"\(([^\)]+)\)n", material_description)
     if polymer:
         formula = polymer.group(1)
         colloquial_names = material_description.rsplit(")n", 1)[-1].strip("() ")
-        return formula, colloquial_names
+        return formula, colloquial_names, True
 
     mat_descr = re.match(r"^(.*)\(([^\(\)]+)\)$", material_description)
     formula, colloquial_names = (
         mat_descr.groups() if mat_descr else (material_description, "")
     )
-    formula = re.sub(r"\<[^\>]*\>", "", formula)
 
-    return formula, colloquial_names
+    return formula, colloquial_names, False
 
 
 def fill(metadata: dict, entry: pd.DataFrame):
     """Fill the data dict from the entry"""
-    formula, colloquial_names = parse_mat_desc(entry["material_description"])
+    formula, colloquial_names, is_polymer = parse_mat_desc(
+        entry["material_description"]
+    )
     clean_chemical_formula = re.sub(r"[^A-Za-z0-9]", "", formula)
     metadata["/ENTRY[entry]/sample/chemical_formula"] = clean_chemical_formula
 
     colloq_names = []
-    if ")n" in formula:
-        colloq_names.append(formula)
+    if is_polymer:
+        colloq_names.append(f"({formula})n")
     if colloquial_names:
         colloq_names.append(colloquial_names)
     if colloq_names:
@@ -235,7 +237,7 @@ def extract_metadata(catalog: pd.DataFrame, samples=5):
         fill(metadata, entry)
         print(metadata)
 
-    catalog[catalog["category"] == "main"].sample(samples).apply(fill_n_print, axis=1)
+    catalog[catalog["material"] == "main"].sample(samples).apply(fill_n_print, axis=1)
 
 
 if __name__ == "__main__":
