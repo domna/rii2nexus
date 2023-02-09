@@ -8,27 +8,30 @@ from typing import List
 import pandas as pd
 import yaml
 from ase.data import chemical_symbols
+from tqdm import tqdm
 
-from nexusutils.dataconverter.convert import convert
+from nexusutils.dataconverter.convert import convert, logger
 
-Entry = namedtuple(
-    "Entry",
-    [
-        "shelf",
-        "shelf_longname",
-        "book_divider",
-        "book",
-        "book_longname",
-        "page",
-        "page_type",
-        "page_longname",
-        "path",
-    ],
-)
+logger.setLevel(logging.ERROR)
 
 
 def load_rii_database():
     """Loads the rii database"""
+    Entry = namedtuple(
+        "Entry",
+        [
+            "category",
+            "category_description",
+            "material_category",
+            "material",
+            "material_description",
+            "reference",
+            "entry_category",
+            "reference_description",
+            "path",
+        ],
+    )
+
     rii_path = Path("refractiveindex.info-database/database")
 
     yml_file = yaml.load(
@@ -36,35 +39,34 @@ def load_rii_database():
     )
 
     entries = []
-    for sh in yml_file:
-        b_div = pd.NA
-        for b in sh["content"]:
-            if "DIVIDER" not in b:
-                p_div = pd.NA
-                for p in b["content"]:
-                    if "DIVIDER" not in p:
-                        entries.append(
-                            Entry(
-                                sh["SHELF"],
-                                sh["name"],
-                                b_div,
-                                b["BOOK"],
-                                b["name"],
-                                p["PAGE"],
-                                p_div,
-                                p["name"],
-                                os.path.join("data", os.path.normpath(p["data"])),
-                            )
-                        )
-                    else:
-                        p_div = p["DIVIDER"]
-            else:
-                b_div = b["DIVIDER"]
+    for category in yml_file:
+        material_div = pd.NA
+        for material in category["content"]:
+            if "DIVIDER" in material:
+                material_div = material["DIVIDER"]
+                continue
+
+            ref_div = pd.NA
+            for ref in material["content"]:
+                if "DIVIDER" in ref:
+                    ref_div = ref["DIVIDER"]
+                    continue
+
+                entries.append(
+                    Entry(
+                        category["SHELF"],
+                        category["name"],
+                        material_div,
+                        material["BOOK"],
+                        material["name"],
+                        ref["PAGE"],
+                        ref_div,
+                        ref["name"],
+                        os.path.join("data", os.path.normpath(ref["data"])),
+                    )
+                )
 
     return pd.DataFrame(entries, dtype=pd.StringDtype())
-
-
-catalog = load_rii_database()
 
 
 def yml_path2nexus_path(path: str) -> str:
@@ -79,11 +81,37 @@ def prefix_path(path: str) -> str:
     return f"refractiveindex.info-database/database/{path}"
 
 
+def parse_mat_desc(material_description: str):
+    """Parse the material description into a formula and colloquial names"""
+    polymer = re.match(r"\(([^\)]+)\)n", material_description)
+    if polymer:
+        formula = polymer.group(1)
+        colloquial_names = material_description.rsplit(")n", 1)[-1].strip("() ")
+        return formula, colloquial_names
+
+    mat_descr = re.match(r"^(.*)\(([^\(\)]+)\)$", material_description)
+    formula, colloquial_names = (
+        mat_descr.groups() if mat_descr else (material_description, "")
+    )
+    formula = re.sub(r"\<[^\>]*\>", "", formula)
+
+    return formula, colloquial_names
+
+
 def fill(metadata: dict, entry: pd.DataFrame):
     """Fill the data dict from the entry"""
-    metadata["/ENTRY[entry]/sample/chemical_formula"] = entry["book"]
+    formula, colloquial_names = parse_mat_desc(entry["material_description"])
+    clean_chemical_formula = re.sub(r"[^A-Za-z0-9]", "", formula)
+    metadata["/ENTRY[entry]/sample/chemical_formula"] = clean_chemical_formula
 
-    clean_chemical_formula = re.sub(r"[^A-Za-z0-9]", "", entry["book"])
+    colloq_names = []
+    if ")n" in formula:
+        colloq_names.append(formula)
+    if colloquial_names:
+        colloq_names.append(colloquial_names)
+    if colloq_names:
+        metadata["/ENTRY[entry]/sample/colloquial_name"] = ", ".join(colloq_names)
+
     element_names = chemical_symbols.copy()  # Don't mess with the ase internal list
     element_names.remove("X")
     element_names += ["D", "T"]
@@ -146,7 +174,7 @@ def create_nexus(entry):
     def fill_uniaxial_entry() -> bool:
         if "-o." in entry["path"]:
             metadata = {}
-            logging.info("Searching for e axis for %s", entry["page"])
+            logging.info("Searching for e axis for %s", entry["reference"])
             e_path = get_secondary_entry("o", "e")
 
             metadata = {}
@@ -159,7 +187,7 @@ def create_nexus(entry):
 
     def fill_biaxial_entry() -> bool:
         if "-alpha." in entry["path"]:
-            logging.info("Searching for beta and gamma axis for %s", entry["page"])
+            logging.info("Searching for beta and gamma axis for %s", entry["reference"])
             beta_path = get_secondary_entry("alpha", "beta")
             gamma_path = get_secondary_entry("alpha", "gamma")
 
@@ -189,25 +217,29 @@ def create_nexus(entry):
     fill_entry()
 
 
-def create_nexus_database():
+def create_nexus_database(catalog: pd.DataFrame):
     """Creates the nexus database from the rii database"""
-    catalog.apply(create_nexus, axis=1)
+    tqdm.pandas()
+    catalog.progress_apply(create_nexus, axis=1)
 
 
-def extract_metadata(samples=5):
+def extract_metadata(catalog: pd.DataFrame, samples=5):
     """Extract metadata from a sample"""
 
     def fill_n_print(entry):
         print(entry)
         metadata = {}
-        metadata["/ENTRY[entry]/literature"] = entry["page_longname"].split(":", 1)[0]
+        metadata["/ENTRY[entry]/literature"] = entry["reference_description"].split(
+            ":", 1
+        )[0]
         fill(metadata, entry)
         print(metadata)
 
-    catalog[catalog["shelf"] == "main"].sample(samples).apply(fill_n_print, axis=1)
+    catalog[catalog["category"] == "main"].sample(samples).apply(fill_n_print, axis=1)
 
 
 if __name__ == "__main__":
-    create_nexus_database()
+    catalog = load_rii_database()
 
-    # extract_metadata()
+    create_nexus_database(catalog)
+    # extract_metadata(catalog)

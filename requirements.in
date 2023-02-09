@@ -3,4 +3,5 @@ pyyaml
 lark
 numpy
 scipy
-git+https://github.com/nomad-coe/nomad-parser-nexus.git@dispersion-refinements
+tqdm>=4.9.0
+git+https://github.com/nomad-coe/nomad-parser-nexus.git

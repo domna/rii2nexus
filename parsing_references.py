@@ -43,6 +43,9 @@ class Citation:
     ref_str: str
     url: Optional[str]
     doi: Optional[str]
+
+    reference_identifier: str = field(default="REFERENCES", repr=False)
+    basename: str = field(default="reference", repr=False)
     bibtex: Optional[str] = None
 
     @staticmethod
@@ -93,14 +96,13 @@ class Citation:
 
     def write_entries(self, template: Dict[str, Any], path: str):
         """Write entries to nexusutils template"""
-        reference_identifier = "REFERENCES"
-        name = basename = "reference"
+        name = self.basename
 
-        while f"{path}/{reference_identifier}[{name}]/text" in template:
+        while f"{path}/{self.reference_identifier}[{name}]/text" in template:
             count = locals().get("count", 0) + 1
-            name = f"{basename}{count}"
+            name = f"{self.basename}{count}"
 
-        base_path = f"{path}/{reference_identifier}[{name}]"
+        base_path = f"{path}/{self.reference_identifier}[{name}]"
         if self.url:
             template[f"{base_path}/url"] = self.url
         if self.doi:
@@ -109,6 +111,9 @@ class Citation:
             template[f"{base_path}/bibtex"] = self.bibtex
 
         template[f"{base_path}/text"] = self.ref_str
+        template[
+            f"{base_path}/description"
+        ] = "Literature reference from which this dispersion function was extracted."
 
 
 if __name__ == "__main__":
