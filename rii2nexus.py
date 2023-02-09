@@ -81,15 +81,37 @@ def prefix_path(path: str) -> str:
 
 def fill(metadata: dict, entry: pd.DataFrame):
     """Fill the data dict from the entry"""
-    clean_chemical_formula = re.sub(r"[^A-Za-z0-9]", "", entry["book"])
-    metadata["/ENTRY[entry]/sample/chemical_formula"] = clean_chemical_formula
+    metadata["/ENTRY[entry]/sample/chemical_formula"] = entry["book"]
 
+    clean_chemical_formula = re.sub(r"[^A-Za-z0-9]", "", entry["book"])
     element_names = chemical_symbols.copy()  # Don't mess with the ase internal list
     element_names.remove("X")
     element_names += ["D", "T"]
-    elements = re.findall(rf"{'|'.join(element_names)}", clean_chemical_formula)
-    if elements:
-        metadata["/ENTRY[entry]/sample/atom_types"] = ",".join(elements)
+    # Sort and reverse to ensure matching longer element names first (i.e. Si before S)
+    element_names.sort()
+    element_names.reverse()
+    elements = re.findall(rf"({'|'.join(element_names)})(\d*)", clean_chemical_formula)
+
+    elems_dict = {}
+    for elem, amount in elements:
+        elems_dict[elem] = elems_dict.get(elem, 0) + (int(amount) if amount else 1)
+
+    elems = []
+    if "C" in elems_dict:
+        c_amount = elems_dict.pop("C")
+        h_amount = elems_dict.pop("H", 0)
+        elems += [("C", c_amount)]
+        if h_amount:
+            elems += [("H", h_amount)]
+    elems += sorted(elems_dict.items())
+
+    if elems:
+        metadata["/ENTRY[entry]/sample/atom_types"] = ",".join(list(zip(*elems))[0])
+
+        chemical_formula = ""
+        for elem, amount in elems:
+            chemical_formula += f"{elem}{amount}" if amount > 1 else f"{elem}"
+        metadata["/ENTRY[entry]/sample/chemical_formula"] = chemical_formula
     metadata["/ENTRY[entry]/dispersion_type"] = "measured"
 
 
