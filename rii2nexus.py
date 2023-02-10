@@ -27,7 +27,7 @@ def load_rii_database():
             "material",
             "material_description",
             "reference",
-            "entry_category",
+            "reference_category",
             "reference_description",
             "path",
         ],
@@ -173,6 +173,7 @@ def write_nexus(path: str, metadata: dict):
         reader="rii_database",
         nxdl="NXdispersive_material",
         output=yml_path2nexus_path(f"{path.rsplit('/', 2)[0]}/{filename}"),
+        download_bibtex=True,
     )
 
 
