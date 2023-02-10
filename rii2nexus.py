@@ -1,5 +1,6 @@
 """Convert the refractiveindex.info database to nexus"""
 from collections import namedtuple
+from functools import lru_cache, partial
 import os
 from pathlib import Path
 import logging
@@ -83,45 +84,48 @@ def prefix_path(path: str) -> str:
 
 def parse_mat_desc(material_description: str):
     """Parse the material description into a formula and colloquial names"""
+
+    def get_colloq_names():
+        colloq_names = []
+        if polymer:
+            colloq_names.append(f"({formula})n")
+        if colloquial_names:
+            colloq_names.append(colloquial_names)
+        return colloq_names
+
+    def clean_formula():
+        return re.sub(r"[^A-Za-z0-9]", "", formula)
+
     material_description = re.sub(r"\<[^\>]*\>", "", material_description)
     polymer = re.match(r"\(([^\)]+)\)n", material_description)
     if polymer:
         formula = polymer.group(1)
         colloquial_names = material_description.rsplit(")n", 1)[-1].strip("() ")
-        return formula, colloquial_names, True
+        return clean_formula(), get_colloq_names()
 
     mat_descr = re.match(r"^(.*)\(([^\(\)]+)\)$", material_description)
     formula, colloquial_names = (
         mat_descr.groups() if mat_descr else (material_description, "")
     )
 
-    return formula, colloquial_names, False
+    return clean_formula(), get_colloq_names()
 
 
-def fill(metadata: dict, entry: pd.DataFrame):
-    """Fill the data dict from the entry"""
-    formula, colloquial_names, is_polymer = parse_mat_desc(
-        entry["material_description"]
-    )
-    clean_chemical_formula = re.sub(r"[^A-Za-z0-9]", "", formula)
-    metadata["/ENTRY[entry]/sample/chemical_formula"] = clean_chemical_formula
-
-    colloq_names = []
-    if is_polymer:
-        colloq_names.append(f"({formula})n")
-    if colloquial_names:
-        colloq_names.append(colloquial_names)
-    if colloq_names:
-        metadata["/ENTRY[entry]/sample/colloquial_name"] = ", ".join(colloq_names)
-
+@lru_cache(maxsize=None)
+def element_regex():
+    """Compiles a regex to find element symbols"""
     element_names = chemical_symbols.copy()  # Don't mess with the ase internal list
     element_names.remove("X")
     element_names += ["D", "T"]
     # Sort and reverse to ensure matching longer element names first (i.e. Si before S)
     element_names.sort()
     element_names.reverse()
-    elements = re.findall(rf"({'|'.join(element_names)})(\d*)", clean_chemical_formula)
 
+    return re.compile(rf"({'|'.join(element_names)})(\d*)")
+
+
+def hill_sorted_elements(elements):
+    """Get a Hill sorted list of (element, amount) tuples from an input list"""
     elems_dict = {}
     for elem, amount in elements:
         elems_dict[elem] = elems_dict.get(elem, 0) + (int(amount) if amount else 1)
@@ -135,13 +139,28 @@ def fill(metadata: dict, entry: pd.DataFrame):
             elems += [("H", h_amount)]
     elems += sorted(elems_dict.items())
 
-    if elems:
+    return elems
+
+
+def fill(metadata: dict, entry: pd.DataFrame):
+    """Fill the data dict from the entry"""
+    clean_chemical_formula, colloquial_names = parse_mat_desc(
+        entry["material_description"]
+    )
+    metadata["/ENTRY[entry]/sample/chemical_formula"] = clean_chemical_formula
+    if colloquial_names:
+        metadata["/ENTRY[entry]/sample/colloquial_name"] = ", ".join(colloquial_names)
+
+    elements = element_regex().findall(clean_chemical_formula)
+    if elements:
+        elems = hill_sorted_elements(elements)
         metadata["/ENTRY[entry]/sample/atom_types"] = ",".join(list(zip(*elems))[0])
 
         chemical_formula = ""
         for elem, amount in elems:
             chemical_formula += f"{elem}{amount}" if amount > 1 else f"{elem}"
         metadata["/ENTRY[entry]/sample/chemical_formula"] = chemical_formula
+
     metadata["/ENTRY[entry]/dispersion_type"] = "measured"
 
 
@@ -157,7 +176,7 @@ def write_nexus(path: str, metadata: dict):
     )
 
 
-def create_nexus(entry):
+def create_nexus(entry, catalog):
     """Create a nexus file from a rii entry"""
 
     def skip_entries(skip_on: List[str]) -> bool:
@@ -222,7 +241,7 @@ def create_nexus(entry):
 def create_nexus_database(catalog: pd.DataFrame):
     """Creates the nexus database from the rii database"""
     tqdm.pandas()
-    catalog.progress_apply(create_nexus, axis=1)
+    catalog.progress_apply(partial(create_nexus, catalog=catalog), axis=1)
 
 
 def extract_metadata(catalog: pd.DataFrame, samples=5):
@@ -237,11 +256,11 @@ def extract_metadata(catalog: pd.DataFrame, samples=5):
         fill(metadata, entry)
         print(metadata)
 
-    catalog[catalog["material"] == "main"].sample(samples).apply(fill_n_print, axis=1)
+    catalog.sample(samples).apply(fill_n_print, axis=1)
 
 
 if __name__ == "__main__":
-    catalog = load_rii_database()
+    database = load_rii_database()
 
-    create_nexus_database(catalog)
-    # extract_metadata(catalog)
+    create_nexus_database(database)
+    # extract_metadata(database)
