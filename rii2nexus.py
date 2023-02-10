@@ -161,7 +161,16 @@ def fill(metadata: dict, entry: pd.DataFrame):
             chemical_formula += f"{elem}{amount}" if amount > 1 else f"{elem}"
         metadata["/ENTRY[entry]/sample/chemical_formula"] = chemical_formula
 
-    metadata["/ENTRY[entry]/dispersion_type"] = "measured"
+    # TODO: Add model/experimental information
+    # and phase information (bulk, solid, liquid)
+    # metadata["/ENTRY[entry]/material_phase"]
+    #               one of [gas, liquid, solid, other]
+    # metadata["/ENTRY[entry]/material_phase_comment"]
+    #               additional information if the field above is otherdispersion_type
+    # metadata["/ENTRY[entry]/additional_phase_information"]
+    #               additional info such as crystaline phase
+    # metadata["/ENTRY[entry]/dispersion_type"] =
+    #               one of [measured, simulated]
 
 
 def write_nexus(path: str, metadata: dict):
