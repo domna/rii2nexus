@@ -41,13 +41,13 @@ def load_rii_database():
 
     entries = []
     for category in yml_file:
-        material_div = pd.NA
+        material_div = None
         for material in category["content"]:
             if "DIVIDER" in material:
                 material_div = material["DIVIDER"]
                 continue
 
-            ref_div = pd.NA
+            ref_div = None
             for ref in material["content"]:
                 if "DIVIDER" in ref:
                     ref_div = ref["DIVIDER"]
@@ -142,8 +142,8 @@ def hill_sorted_elements(elements):
     return elems
 
 
-def fill(metadata: dict, entry: pd.DataFrame):
-    """Fill the data dict from the entry"""
+def fill_material(metadata: dict, entry: pd.DataFrame):
+    """Fill the data dict for a material from the entry"""
     clean_chemical_formula, colloquial_names = parse_mat_desc(
         entry["material_description"]
     )
@@ -161,16 +161,36 @@ def fill(metadata: dict, entry: pd.DataFrame):
             chemical_formula += f"{elem}{amount}" if amount > 1 else f"{elem}"
         metadata["/ENTRY[entry]/sample/chemical_formula"] = chemical_formula
 
-    # TODO: Add model/experimental information
-    # and phase information (bulk, solid, liquid)
-    # metadata["/ENTRY[entry]/material_phase"]
-    #               one of [gas, liquid, solid, other]
-    # metadata["/ENTRY[entry]/material_phase_comment"]
-    #               additional information if the field above is otherdispersion_type
-    # metadata["/ENTRY[entry]/additional_phase_information"]
-    #               additional info such as crystaline phase
-    # metadata["/ENTRY[entry]/dispersion_type"] =
-    #               one of [measured, simulated]
+    if pd.isnull(entry["reference_category"]):
+        return
+
+    for phase in ["gas", "liquid", "solid"]:
+        if phase == entry["reference_category"].lower():
+            metadata["/ENTRY[entry]/material_phase"] = phase
+
+    if "simulation" in entry["reference_category"].lower():
+        metadata["/ENTRY[entry]/dispersion_type"] = "simulated"
+
+    for identifier in ["experiment", "measure"]:
+        if identifier in entry["reference_category"].lower():
+            metadata["/ENTRY[entry]/dispersion_type"] = "measured"
+
+
+def fill_glass(metadata, entry):
+    """Fill the data dict for a glass"""
+    metadata["/ENTRY[entry]/sample/chemical_formula"] = entry["reference_description"]
+    metadata["/ENTRY[entry]/sample/colloquial_name"] = entry["material_description"]
+    metadata["/ENTRY[entry]/sample/is_glass"] = True
+    metadata["/ENTRY[entry]/sample/material_phase"] = "solid"
+    metadata["/ENTRY[entry]/sample/material_phase_comment"] = "glass, amorphous"
+
+
+def fill(metadata: dict, entry: pd.DataFrame):
+    """Fill the datadict from an entry"""
+    if entry["category"] == "glass":
+        return fill_glass(metadata, entry)
+
+    return fill_material(metadata, entry)
 
 
 def write_nexus(path: str, metadata: dict):
